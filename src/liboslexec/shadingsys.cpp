@@ -373,10 +373,11 @@ ShadingSystem::BatchedExecutor<WidthT>::execute_layer(
     void* output_base_ptr, ustring layername)
 {
     int layernumber = m_shading_system.find_layer(*ctx.group(), layername);
-    return (layernumber >= 0) ? ctx.batched<WidthT>().execute_layer(
-               batch_size, wide_shadeindex, globals_batch, userdata_base_ptr,
-               output_base_ptr, layernumber)
-                              : false;
+    return (layernumber >= 0)
+               ? ctx.batched<WidthT>().execute_layer(
+                     batch_size, wide_shadeindex, globals_batch,
+                     userdata_base_ptr, output_base_ptr, layernumber)
+               : false;
 }
 
 template<int WidthT>
@@ -390,10 +391,11 @@ ShadingSystem::BatchedExecutor<WidthT>::execute_layer(
     OSL_ASSERT(symbol);
     const Symbol* sym = reinterpret_cast<const Symbol*>(symbol);
     int layernumber   = sym->layer();
-    return (layernumber >= 0) ? ctx.batched<WidthT>().execute_layer(
-               batch_size, wide_shadeindex, globals_batch, userdata_base_ptr,
-               output_base_ptr, layernumber)
-                              : false;
+    return (layernumber >= 0)
+               ? ctx.batched<WidthT>().execute_layer(
+                     batch_size, wide_shadeindex, globals_batch,
+                     userdata_base_ptr, output_base_ptr, layernumber)
+               : false;
 }
 #endif
 
@@ -1236,6 +1238,16 @@ ShadingSystemImpl::ShadingSystemImpl(RendererServices* renderer,
         m_texturesys->attribute("automip", 1);
         m_texturesys->attribute("autotile", 64);
 #endif
+    }
+
+    if (renderer->supports("NVPTX")) {
+        m_gpu_target.backend = GPUBackendKind::NVPTX;
+        m_gpu_target.artifact = GPUArtifactKind::PTX;
+        m_gpu_target.triple = "nvptx64-nvidia-cuda";
+    } else if (renderer->supports("AMDGPU")) {
+        m_gpu_target.backend = GPUBackendKind::AMDGPU;
+        m_gpu_target.artifact = GPUArtifactKind::LLVMBitcode;
+        m_gpu_target.triple = "amdgcn-amd-amdhsa";
     }
 
     // Alternate way of turning on LLVM debug mode (temporary/experimental)
@@ -2565,14 +2577,12 @@ ShadingSystemImpl::getstats(int level) const
               (int)m_stat_preopt_ops, (int)m_stat_postopt_ops,
               100.0
                   * (double(m_stat_postopt_ops)
-                         / (std::max(1, (int)m_stat_preopt_ops))
-                     - 1.0));
+                     / (std::max(1, (int)m_stat_preopt_ops))-1.0));
         print(out, "  Optimized {} symbols to {} ({:.1f}%)\n",
               (int)m_stat_preopt_syms, (int)m_stat_postopt_syms,
               100.0
                   * (double(m_stat_postopt_syms)
-                         / (std::max(1, (int)m_stat_preopt_syms))
-                     - 1.0));
+                     / (std::max(1, (int)m_stat_preopt_syms))-1.0));
         print(out, "  Optimized {} useparam ops into {} llvm run layer calls\n",
               (int)m_stat_useparam_ops, (int)m_stat_call_layers_inserted);
     }
