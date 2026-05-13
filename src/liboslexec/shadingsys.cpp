@@ -1245,9 +1245,7 @@ ShadingSystemImpl::ShadingSystemImpl(RendererServices* renderer,
         m_gpu_target.artifact = GPUArtifactKind::PTX;
         m_gpu_target.triple = "nvptx64-nvidia-cuda";
     } else if (renderer->supports("AMDGPU")) {
-        m_gpu_target.backend = GPUBackendKind::AMDGPU;
-        m_gpu_target.artifact = GPUArtifactKind::LLVMBitcode;
-        m_gpu_target.triple = "amdgcn-amd-amdhsa";
+        m_gpu_target = make_amdgpu_target({"gfx1000"}); // < arch spec from cli coming soon, for now this will do
     }
 
     // Alternate way of turning on LLVM debug mode (temporary/experimental)
