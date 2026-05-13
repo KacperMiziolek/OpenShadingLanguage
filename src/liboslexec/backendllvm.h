@@ -524,6 +524,13 @@ public:
 
     /// Return whether or not we are compiling for an OptiX-based renderer.
     bool use_optix() { return m_use_optix; }
+
+    bool is_no_backend() { return shadingsys().m_gpu_target.backend == GPUBackendKind::None; }
+
+    bool is_nvptx_backend() { return shadingsys().m_gpu_target.backend == GPUBackendKind::NVPTX; }
+
+    bool is_amdgpu_backend() { return shadingsys().m_gpu_target.backend == GPUBackendKind::AMDGPU; }
+
     bool use_optix_cache() { return shadingsys().use_optix_cache(); }
 
     /// Return if we should compile against free function versions of Renderer Service.
@@ -594,7 +601,7 @@ private:
     // Name of each indexed field in the groupdata, mostly for debugging.
     std::vector<std::string> m_groupdata_field_names;
 
-    bool m_use_optix;  ///< Compile for OptiX?
+    bool m_use_optix; ///< Compile for OptiX?
     bool m_use_rs_bitcode;  /// To use free function versions of Renderer Service functions.
 
     friend class ShadingSystemImpl;

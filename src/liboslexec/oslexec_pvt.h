@@ -66,6 +66,34 @@ namespace Strutil = OIIO::Strutil;
 
 OSL_NAMESPACE_BEGIN
 
+/// Descriptor to specify what backend to use
+enum class GPUBackendKind {
+    None,
+    NVPTX,
+    AMDGPU
+};
+
+enum class GPUArtifactKind {
+    None,
+    PTX,
+    LLVMBitcode,
+    LLVMIR,
+    HSACO
+};
+
+struct GPUTargetDesc {
+    GPUBackendKind backend = GPUBackendKind::None;
+    GPUArtifactKind artifact = GPUArtifactKind::None;
+    std::string triple;
+    std::string cpu;
+    std::string features;
+    std::string data_layout;
+    std::vector<std::string> archs;
+    bool rdc = false;
+    int code_obj_version = 5;
+    bool enable_cache = false;
+};
+
 
 
 struct PerThreadInfo {
@@ -80,6 +108,8 @@ struct PerThreadInfo {
 
 
 namespace pvt {
+
+
 
 void
 optix_cache_unwrap(string_view cache_value, std::string& ptx,
@@ -637,7 +667,8 @@ public:
     ///
     TextureSystem* texturesys() const { return m_texturesys; }
 
-    bool use_optix() const { return m_use_optix; }
+    GPUTargetDesc target_gpu() { return m_gpu_target; }
+    bool use_optix() const { return m_use_optix; } /// to be deleted
     bool use_optix_cache() const { return m_use_optix_cache; }
     bool debug_nan() const { return m_debugnan; }
     bool debug_uninit() const { return m_debug_uninit; }
@@ -965,6 +996,7 @@ private:
     int m_compile_report;    ///< Print compilation report?
     bool m_use_optix;        ///< This is an OptiX-based renderer
     bool m_use_optix_cache;  ///< Renderer-enabled caching for OptiX ptx
+    GPUTargetDesc m_gpu_target;
     int m_max_optix_groupdata_alloc;  ///< Maximum OptiX groupdata buffer allocation
     bool m_buffer_printf;             ///< Buffer/batch printf output?
     bool m_no_noise;                  ///< Substitute trivial noise calls
