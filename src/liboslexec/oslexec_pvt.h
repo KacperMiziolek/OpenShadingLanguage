@@ -94,6 +94,28 @@ struct GPUTargetDesc {
     bool enable_cache = false;
 };
 
+inline GPUTargetDesc make_amdgpu_target(const std::vector<std::string>& archs) {
+    GPUTargetDesc t;
+    t.backend = GPUBackendKind::AMDGPU;
+    t.artifact = GPUArtifactKind::LLVMBitcode;
+    t.triple = "amdgcn-amd-amdhsa";
+    t.data_layout = "e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64"
+                    "-p5:32:32-p6:  32:32-p7:160:256:256:32-p8:128:128"
+                    "-p9:192:256:256:32-i64:64-v16:16-v24:32-v32:32"
+                    "-v48:64-v96:128-v192:256-v256:256-v512:512"
+                    "-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9";
+    t.rdc = true;
+    t.code_obj_version = 5;
+    t.archs = archs;
+    return t;
+}
+
+struct RendererDeviceLibraryDesc {
+    GPUBackendKind backend = GPUBackendKind::None;
+    const char* arch = "";
+    int size = 0;
+    const void* data = nullptr;
+};
 
 
 struct PerThreadInfo {
@@ -108,8 +130,6 @@ struct PerThreadInfo {
 
 
 namespace pvt {
-
-
 
 void
 optix_cache_unwrap(string_view cache_value, std::string& ptx,
