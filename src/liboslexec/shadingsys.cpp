@@ -2110,6 +2110,76 @@ ShadingSystemImpl::getattribute(ShaderGroup* group, string_view name,
         *(int*)val = group->nlayers();
         return true;
     }
+    if (name == "gpu_num_artifacts" && type == TypeInt) {
+        *(int*)val = (int)group->m_compiled_gpu_artifacts.size();
+        return true;
+    }
+    if (OIIO::Strutil::starts_with(name, "gpu_artifact:")) {
+        auto tokens = OIIO::Strutil::splitsv(name, ":");
+        if (tokens.size() >= 3) {
+            int art_idx = 0;
+            string_view art_idx_str = tokens[1];
+            if (OIIO::Strutil::parse_int(art_idx_str, art_idx) && art_idx >= 0 && art_idx < (int)group->m_compiled_gpu_artifacts.size()) {
+                const auto& art = group->m_compiled_gpu_artifacts[art_idx];
+                string_view attr = tokens[2];
+                if (attr == "backend" && type == TypeInt) {
+                    *(int*)val = (int)art.backend;
+                    return true;
+                }
+                if (attr == "kind" && type == TypeInt) {
+                    *(int*)val = (int)art.artifact;
+                    return true;
+                }
+                if (attr == "triple" && type == TypeString) {
+                    *(ustring*)val = ustring(art.triple);
+                    return true;
+                }
+                if (attr == "arch" && type == TypeString) {
+                    *(ustring*)val = ustring(art.arch);
+                    return true;
+                }
+                if (attr == "rdc" && type == TypeInt) {
+                    *(int*)val = (int)art.rdc;
+                    return true;
+                }
+                if (attr == "num_exports" && type == TypeInt) {
+                    *(int*)val = (int)art.exports.size();
+                    return true;
+                }
+                if (attr == "size" && type == TypeInt) {
+                    *(int*)val = (int)art.payload.size();
+                    return true;
+                }
+                if (attr == "data" && type.basetype == TypeDesc::UINT8) {
+                    size_t size_to_copy = std::min(type.size(), art.payload.size());
+                    if (size_to_copy > 0) {
+                        memcpy(val, art.payload.data(), size_to_copy);
+                    }
+                    return true;
+                }
+                if (attr == "export" && tokens.size() >= 5) {
+                    int exp_idx = 0;
+                    string_view exp_idx_str = tokens[3];
+                    if (OIIO::Strutil::parse_int(exp_idx_str, exp_idx) && exp_idx >= 0 && exp_idx < (int)art.exports.size()) {
+                        const auto& exp = art.exports[exp_idx];
+                        string_view exp_attr = tokens[4];
+                        if (exp_attr == "kind" && type == TypeInt) {
+                            *(int*)val = (int)exp.kind;
+                            return true;
+                        }
+                        if (exp_attr == "layer_name" && type == TypeString) {
+                            *(ustring*)val = ustring(exp.layer_name);
+                            return true;
+                        }
+                        if (exp_attr == "symbol_name" && type == TypeString) {
+                            *(ustring*)val = ustring(exp.symbol_name);
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
     if (name == "layer_names" && type.basetype == TypeDesc::STRING) {
         size_t n = std::min(type.numelements(), (size_t)group->nlayers());
         for (size_t i = 0; i < n; ++i)
@@ -2318,6 +2388,10 @@ ShadingSystemImpl::getattribute(ShaderGroup* group, string_view name,
     }
     if (name == "llvm_groupdata_size" && type == TypeInt) {
         *(int*)val = (int)group->llvm_groupdata_size();
+        return true;
+    }
+    if (name == "llvm_groupdata_alignment" && type == TypeInt) {
+        *(int*)val = (int)group->llvm_groupdata_alignment();
         return true;
     }
 

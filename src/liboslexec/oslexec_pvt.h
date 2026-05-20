@@ -117,6 +117,30 @@ struct RendererDeviceLibraryDesc {
     const void* data = nullptr;
 };
 
+enum class GPUExportKind {
+    Init,
+    EntryLayer,
+    FusedEntry
+};
+
+struct GPUExportedSymbol {
+    GPUExportKind kind = GPUExportKind::EntryLayer;
+    std::string layer_name;
+    std::string symbol_name;
+};
+
+struct CompiledGPUArtifact {
+    GPUBackendKind backend = GPUBackendKind::None;
+    GPUArtifactKind artifact = GPUArtifactKind::None;
+    std::string triple;
+    std::string arch;
+    std::string llvm_version;
+    bool rdc = false;
+    std::vector<GPUExportedSymbol> exports;
+    std::vector<uint8_t> payload;
+};
+
+
 
 struct PerThreadInfo {
     PerThreadInfo();
@@ -688,7 +712,7 @@ public:
     TextureSystem* texturesys() const { return m_texturesys; }
 
     GPUTargetDesc target_gpu() { return m_gpu_target; }
-    bool use_optix() const { return m_use_optix; } /// to be deleted
+    bool use_optix() const { return m_use_optix; } // to be deleted
     bool use_optix_cache() const { return m_use_optix_cache; }
     bool debug_nan() const { return m_debugnan; }
     bool debug_uninit() const { return m_debug_uninit; }
@@ -1821,6 +1845,9 @@ public:
     size_t llvm_groupdata_size() const { return m_llvm_groupdata_size; }
     void llvm_groupdata_size(size_t size) { m_llvm_groupdata_size = size; }
 
+    size_t llvm_groupdata_alignment() const { return m_llvm_groupdata_alignment; }
+    void llvm_groupdata_alignment(size_t align) { m_llvm_groupdata_alignment = align; }
+
     size_t llvm_groupdata_wide_size() const
     {
         return m_llvm_groupdata_wide_size;
@@ -2070,6 +2097,7 @@ private:
     size_t m_llvm_groupdata_size = 0;  ///< Heap size needed for its groupdata
     size_t m_llvm_groupdata_wide_size
         = 0;                     ///< Heap size needed for its wide groupdata
+    size_t m_llvm_groupdata_alignment = 8;  ///< Alignment needed for groupdata
     int m_id;                    ///< Unique ID for the group
     int m_num_entry_layers = 0;  ///< Number of marked entry layers
     RunLLVMGroupFunc m_llvm_compiled_version = nullptr;
@@ -2114,6 +2142,8 @@ private:
 
     // PTX assembly for compiled ShaderGroup
     std::string m_llvm_ptx_compiled_version;
+
+    std::vector<CompiledGPUArtifact> m_compiled_gpu_artifacts;
 
     ParamValueList m_pending_params;          // Pending Parameter() values
     std::vector<ParamHints> m_pending_hints;  // ParamHints of pending params
