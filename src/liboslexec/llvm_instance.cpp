@@ -200,7 +200,7 @@ std::string
 layer_function_name(const ShaderGroup& group, const ShaderInstance& inst,
                     bool api)
 {
-    bool use_optix     = inst.shadingsys().use_optix();
+    bool use_optix     = inst.shadingsys().target_gpu().backend == GPUBackendKind::NVPTX;
     const char* prefix = use_optix && api ? "__direct_callable__" : "";
     return fmtformat("{}osl_layer_group_{}_name_{}", prefix, group.name(),
                      inst.layername());
@@ -210,7 +210,7 @@ std::string
 init_function_name(const ShadingSystemImpl& shadingsys,
                    const ShaderGroup& group, bool api)
 {
-    bool use_optix     = shadingsys.use_optix();
+    bool use_optix     = inst.shadingsys().target_gpu().backend == GPUBackendKind::NVPTX;
     const char* prefix = use_optix && api ? "__direct_callable__" : "";
 
     return fmtformat("{}osl_init_group_{}", prefix, group.name());
@@ -221,8 +221,10 @@ fused_function_name(const ShaderGroup& group)
 {
     int nlayers          = group.nlayers();
     ShaderInstance* inst = group[nlayers - 1];
-
-    return fmtformat("__direct_callable__fused_{}_name_{}", group.name(),
+    bool is_nvptx = inst->shadingsys().target_gpu().backend == GPUBackendKind::NVPTX; // __direct_callable__ is OptiX-specific
+    const char* prefix   = is_nvptx ? "__direct_callable__" : "";                     // hence the change
+    
+    return fmtformat("{}fused_{}_name_{}", prefix, group.name(),
                      inst->layername());
 }
 
@@ -2173,7 +2175,7 @@ BackendLLVM::run()
             }
 
         } else {
-#    ifdef OSL_LLVM_CUDA_BITCODE
+#    ifdef OSL_LLVM_CUDA_BITCODE // fix for AMDGPU support
             llvm::Module* shadeops_module = ll.module_from_bitcode(
                 (char*)shadeops_cuda_llvm_compiled_ops_block,
                 shadeops_cuda_llvm_compiled_ops_size, "llvm_ops", &err);
