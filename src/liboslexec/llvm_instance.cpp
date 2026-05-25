@@ -221,8 +221,8 @@ fused_function_name(const ShaderGroup& group)
 {
     int nlayers          = group.nlayers();
     ShaderInstance* inst = group[nlayers - 1];
-    bool is_nvptx = inst->shadingsys().target_gpu().backend == GPUBackendKind::NVPTX; // __direct_callable__ is OptiX-specific
-    const char* prefix   = is_nvptx ? "__direct_callable__" : "";                     // hence the change
+    bool is_nvptx = inst->shadingsys().target_gpu().backend == GPUBackendKind::NVPTX;
+    const char* prefix   = is_nvptx ? "__direct_callable__" : "";
     
     return fmtformat("{}fused_{}_name_{}", prefix, group.name(),
                      inst->layername());
@@ -2175,79 +2175,90 @@ BackendLLVM::run()
             }
 
         } else {
-#    ifdef OSL_LLVM_CUDA_BITCODE // fix for AMDGPU support
-            llvm::Module* shadeops_module = ll.module_from_bitcode(
-                (char*)shadeops_cuda_llvm_compiled_ops_block,
-                shadeops_cuda_llvm_compiled_ops_size, "llvm_ops", &err);
-
-            if (err.length())
-                shadingcontext()->errorfmt(
-                    "llvm::parseBitcodeFile returned '{}' for cuda llvm_ops\n",
-                    err);
-
-            shadeops_module->setDataLayout(
-                "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-i128:128:128-f32:32:32-f64:64:64-v16:16:16-v32:32:32-v64:64:64-v128:128:128-n16:32:64");
-#        if OSL_LLVM_VERSION < 210
-            shadeops_module->setTargetTriple("nvptx64-nvidia-cuda");
-#        else
-            shadeops_module->setTargetTriple(
-                llvm::Triple("nvptx64-nvidia-cuda"));
-#        endif
-
-            std::unique_ptr<llvm::Module> shadeops_ptr(shadeops_module);
-            llvm::Linker::linkModules(*ll.module(), std::move(shadeops_ptr),
-                                      llvm::Linker::Flags::None);
-
-            if (err.length())
-                shadingcontext()->errorfmt(
-                    "llvm::parseBitcodeFile returned '{}' for cuda rend_lib\n",
-                    err);
-
-            // The renderer may provide additional shadeops bitcode for renderer-specific
-            // functionality ("rend_lib" fuctions). Like the built-in shadeops, the rend_lib
-            // functions may or may not be inlined, depending on the optimization options.
-            std::vector<char>& bitcode = shadingsys().m_lib_bitcode;
-            if (bitcode.size()) {
-                llvm::Module* rend_lib_module = ll.module_from_bitcode(
-                    static_cast<const char*>(bitcode.data()), bitcode.size(),
-                    "cuda_rend_lib", &err);
+            const auto& target = shadingsys().target_gpu();
+            if (target.backend == GPUBackendKind::NVPTX) {
+#    ifdef OSL_LLVM_CUDA_BITCODE
+                llvm::Module* shadeops_module = ll.module_from_bitcode(
+                    (char*)shadeops_cuda_llvm_compiled_ops_block,
+                    shadeops_cuda_llvm_compiled_ops_size, "llvm_ops", &err);
 
                 if (err.length())
                     shadingcontext()->errorfmt(
                         "llvm::parseBitcodeFile returned '{}' for cuda llvm_ops\n",
                         err);
 
-                rend_lib_module->setDataLayout(
-                    "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-i128:128:128-f32:32:32-f64:64:64-v16:16:16-v32:32:32-v64:64:64-v128:128:128-n16:32:64");
+                shadeops_module->setDataLayout(target.data_layout);
 #        if OSL_LLVM_VERSION < 210
-                rend_lib_module->setTargetTriple("nvptx64-nvidia-cuda");
+                shadeops_module->setTargetTriple(target.triple.c_str());
 #        else
-                rend_lib_module->setTargetTriple(
-                    llvm::Triple("nvptx64-nvidia-cuda"));
+                shadeops_module->setTargetTriple(llvm::Triple(target.triple));
 #        endif
 
-                for (llvm::Function& fn : *rend_lib_module) {
-                    fn.addFnAttr("osl-rend_lib-function", "true");
-                }
+                std::unique_ptr<llvm::Module> shadeops_ptr(shadeops_module);
+                llvm::Linker::linkModules(*ll.module(), std::move(shadeops_ptr),
+                                          llvm::Linker::Flags::None);
 
-                std::unique_ptr<llvm::Module> rend_lib_ptr(rend_lib_module);
-                llvm::Linker::linkModules(*ll.module(), std::move(rend_lib_ptr),
-                                          llvm::Linker::Flags::OverrideFromSrc);
+                if (err.length())
+                    shadingcontext()->errorfmt(
+                        "llvm::parseBitcodeFile returned '{}' for cuda rend_lib\n",
+                        err);
+
+                // The renderer may provide additional shadeops bitcode for renderer-specific
+                // functionality ("rend_lib" fuctions). Like the built-in shadeops, the rend_lib
+                // functions may or may not be inlined, depending on the optimization options.
+                std::vector<char>& bitcode = shadingsys().m_lib_bitcode;
+                if (bitcode.size()) {
+                    llvm::Module* rend_lib_module = ll.module_from_bitcode(
+                        static_cast<const char*>(bitcode.data()), bitcode.size(),
+                        "cuda_rend_lib", &err);
+
+                    if (err.length())
+                        shadingcontext()->errorfmt(
+                            "llvm::parseBitcodeFile returned '{}' for cuda llvm_ops\n",
+                            err);
+
+                    rend_lib_module->setDataLayout(target.data_layout);
+#        if OSL_LLVM_VERSION < 210
+                    rend_lib_module->setTargetTriple(target.triple.c_str());
+#        else
+                    rend_lib_module->setTargetTriple(
+                        llvm::Triple(target.triple));
+#        endif
+
+                    for (llvm::Function& fn : *rend_lib_module) {
+                        fn.addFnAttr("osl-rend_lib-function", "true");
+                    }
+
+                    std::unique_ptr<llvm::Module> rend_lib_ptr(rend_lib_module);
+                    llvm::Linker::linkModules(*ll.module(), std::move(rend_lib_ptr),
+                                              llvm::Linker::Flags::OverrideFromSrc);
+                }
+#    else
+                OSL_ASSERT(0 && "Must generate LLVM CUDA bitcode for OptiX");
+#    endif
+            } else if (target.backend == GPUBackendKind::AMDGPU) {
+                // Link AMDGPU device shadeops
+                // (The actual block shadeops_amdgpu_llvm_compiled_ops_block is added in the CMake phase)
+                // For now, we stub this link path to allow the module configuration to proceed:
+#    ifdef OSL_ENABLE_AMDGPU
+                // When enabled, we'll link in the device shadeops here
+#    endif
             }
-#    else
-            OSL_ASSERT(0 && "Must generate LLVM CUDA bitcode for OptiX");
-#    endif
-            // Ensure that the correct target triple and data layout are set when targeting NVPTX.
-            // The triple is empty with recent versions of LLVM (e.g., 15) for reasons that aren't
-            // clear. So we must set them to the expected values.
-            // See: https://llvm.org/docs/NVPTXUsage.html
+
+            // Set the correct target triple and data layout dynamically from the descriptor
 #    if OSL_LLVM_VERSION < 210
-            ll.module()->setTargetTriple("nvptx64-nvidia-cuda");
+            ll.module()->setTargetTriple(target.triple.c_str());
 #    else
-            ll.module()->setTargetTriple(llvm::Triple("nvptx64-nvidia-cuda"));
+            ll.module()->setTargetTriple(llvm::Triple(target.triple));
 #    endif
-            ll.module()->setDataLayout(
-                "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-i128:128:128-f32:32:32-f64:64:64-v16:16:16-v32:32:32-v64:64:64-v128:128:128-n16:32:64");
+            ll.module()->setDataLayout(target.data_layout);
+
+            if (target.backend == GPUBackendKind::AMDGPU && target.rdc) {
+                ll.module()->setPICLevel(llvm::PICLevel::BigPIC);
+                ll.module()->addModuleFlag(llvm::Module::Override,
+                                           "amdhsa_code_object_version",
+                                           target.code_obj_version);
+            }
 
             // Tag each function as an OSL library function to help with
             // inlining and optimization after codegen.
@@ -2493,16 +2504,93 @@ BackendLLVM::run()
         }
     }
 
+    const auto& target = shadingsys().target_gpu();
+    if (target.backend == GPUBackendKind::NVPTX) {
 #if OSL_USE_OPTIX
-    if (use_optix()) {
         ll.ptx_compile_group(nullptr, group().name().string(),
                              group().m_llvm_ptx_compiled_version);
         if (group().m_llvm_ptx_compiled_version.empty()) {
             OSL_ASSERT(0 && "Unable to generate PTX");
         }
-    } else
+
+        // Also populate generic container for backward compatibility and uniform API
+        CompiledGPUArtifact art;
+        art.backend = target.backend;
+        art.artifact = target.artifact;
+        art.triple = target.triple;
+        art.llvm_version = LLVM_VERSION_STRING;
+        art.exports.push_back({ GPUExportKind::Init, "",
+                                init_function_name(shadingsys(), group(), true) });
+        for (int layer = 0; layer < nlayers; ++layer) {
+            if (group().is_entry_layer(layer)) {
+                ShaderInstance* inst = group()[layer];
+                art.exports.push_back({ GPUExportKind::EntryLayer,
+                                        inst->layername().string(),
+                                        layer_function_name(group(), *inst, true) });
+            }
+        }
+        art.payload.assign(group().m_llvm_ptx_compiled_version.begin(),
+                           group().m_llvm_ptx_compiled_version.end());
+        group().m_compiled_gpu_artifacts.push_back(std::move(art));
+#else
+        OSL_ASSERT(0 && "OptiX support is disabled in this build");
 #endif
-    {
+    } else if (target.backend == GPUBackendKind::AMDGPU) {
+        // Run general optimization pass on the canonical module first
+        if (!group().does_nothing())
+            ll.do_optimize();
+
+        // Strip library function bodies to minimize size (OptiX-equivalent behavior)
+        for (llvm::Function& fn : *ll.module()) {
+            if (fn.hasFnAttribute("osl-lib-function"))
+                fn.deleteBody();
+        }
+
+        // Loop over each target architecture (e.g. gfx1100, gfx1030)
+        for (const auto& arch : target.archs) {
+            // Clone module to safely apply target CPU qualifications per-architecture
+            auto arch_module = llvm::CloneModule(*ll.module());
+            arch_module->setDataLayout(target.data_layout);
+#if OSL_LLVM_VERSION >= 210
+            arch_module->setTargetTriple(llvm::Triple(target.triple));
+#else
+            arch_module->setTargetTriple(target.triple);
+#endif
+
+            // Emit the bitcode to a raw memory buffer
+            std::vector<uint8_t> bitcode_payload;
+            llvm::raw_svector_ostream os(reinterpret_cast<llvm::SmallVectorImpl<char>&>(bitcode_payload));
+#if OSL_LLVM_VERSION >= 70
+            llvm::WriteBitcodeToFile(*arch_module, os);
+#else
+            llvm::WriteBitcodeToFile(arch_module.get(), os);
+#endif
+
+            // Assemble the final artifact
+            CompiledGPUArtifact art;
+            art.backend = target.backend;
+            art.artifact = target.artifact;
+            art.triple = target.triple;
+            art.arch = arch;
+            art.rdc = target.rdc;
+            art.llvm_version = LLVM_VERSION_STRING;
+
+            // Record exports (pass api=false to avoid OptiX specific __direct_callable__)
+            art.exports.push_back({ GPUExportKind::Init, "",
+                                    init_function_name(shadingsys(), group(), false) });
+            for (int layer = 0; layer < nlayers; ++layer) {
+                if (group().is_entry_layer(layer)) {
+                    ShaderInstance* inst = group()[layer];
+                    art.exports.push_back({ GPUExportKind::EntryLayer,
+                                            inst->layername().string(),
+                                            layer_function_name(group(), *inst, false) });
+                }
+            }
+
+            art.payload = std::move(bitcode_payload);
+            group().m_compiled_gpu_artifacts.push_back(std::move(art));
+        }
+    } else {
         // Force the JIT to happen now and retrieve the JITed function pointers
         // for the initialization and all public entry points.
         group().llvm_compiled_init(
