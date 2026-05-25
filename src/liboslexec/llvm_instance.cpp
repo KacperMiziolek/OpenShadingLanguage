@@ -210,7 +210,7 @@ std::string
 init_function_name(const ShadingSystemImpl& shadingsys,
                    const ShaderGroup& group, bool api)
 {
-    bool use_optix     = inst.shadingsys().target_gpu().backend == GPUBackendKind::NVPTX;
+    bool use_optix     = shadingsys.target_gpu().backend == GPUBackendKind::NVPTX;
     const char* prefix = use_optix && api ? "__direct_callable__" : "";
 
     return fmtformat("{}osl_init_group_{}", prefix, group.name());
@@ -2064,10 +2064,17 @@ BackendLLVM::prepare_module_for_cuda_jit()
     }
 
 #ifndef OSL_CUDA_NO_FTZ
-    for (llvm::Function& fn : *ll.module()) {
-        fn.addFnAttr("nvptx-f32ftz", "true");
-        fn.addFnAttr("denormal-fp-math", "preserve-sign,preserve-sign");
-        fn.addFnAttr("denormal-fp-math-f32", "preserve-sign,preserve-sign");
+    if (is_nvptx_backend()) {
+        for (llvm::Function& fn : *ll.module()) {
+            fn.addFnAttr("nvptx-f32ftz", "true");
+            fn.addFnAttr("denormal-fp-math", "preserve-sign,preserve-sign");
+            fn.addFnAttr("denormal-fp-math-f32", "preserve-sign,preserve-sign");
+        }
+    } else if (is_amdgpu_backend()) {
+        for (llvm::Function& fn : *ll.module()) {
+            fn.addFnAttr("denormal-fp-math", "preserve-sign,preserve-sign");
+            fn.addFnAttr("denormal-fp-math-f32", "preserve-sign,preserve-sign");
+        }
     }
 #endif
 }
@@ -2126,7 +2133,7 @@ BackendLLVM::run()
         }
 #    endif
 #else
-        if (!use_optix()) {
+        if (is_no_backend()) {
             if (use_rs_bitcode()) {
                 ll.module(ll.module_from_bitcode(
                     (char*)osl_llvm_compiled_rs_dependent_ops_block,
