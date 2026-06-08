@@ -2564,14 +2564,19 @@ BackendLLVM::run()
             arch_module->setTargetTriple(target.triple);
 #endif
 
-            // Emit the bitcode to a raw memory buffer
+            GPUEmitDesc desc;
+            desc.backend = target.backend;
+            desc.artifact = target.artifact;
+            desc.triple = target.triple;
+            desc.cpu = arch;
+            desc.data_layout = target.data_layout;
+            desc.rdc = target.rdc;
+
             std::vector<uint8_t> bitcode_payload;
-            llvm::raw_svector_ostream os(reinterpret_cast<llvm::SmallVectorImpl<char>&>(bitcode_payload));
-#if OSL_LLVM_VERSION >= 70
-            llvm::WriteBitcodeToFile(*arch_module, os);
-#else
-            llvm::WriteBitcodeToFile(arch_module.get(), os);
-#endif
+            if (!ll.emit_gpu_artifact(desc, arch_module.get(), bitcode_payload)) {
+                shadingcontext()->errorfmt("Failed to emit AMDGPU artifact for architecture {}\n", arch);
+                return;
+            }
 
             // Assemble the final artifact
             CompiledGPUArtifact art;

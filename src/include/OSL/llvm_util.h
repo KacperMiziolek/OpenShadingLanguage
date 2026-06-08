@@ -53,6 +53,30 @@ OSL_NAMESPACE_BEGIN
 namespace pvt {  // OSL::pvt
 
 
+enum class GPUBackendKind {
+    None,
+    NVPTX,
+    AMDGPU
+};
+
+enum class GPUArtifactKind {
+    None,
+    PTX,
+    LLVMBitcode,
+    LLVMIR,
+    HSACO
+};
+
+struct GPUEmitDesc {
+    GPUBackendKind backend = GPUBackendKind::None;
+    GPUArtifactKind artifact = GPUArtifactKind::None;
+    std::string triple;
+    std::string cpu;
+    std::string features;
+    std::string data_layout;
+    bool rdc = false;
+};
+
 enum class TargetISA {
     UNKNOWN,
     NONE,
@@ -65,6 +89,7 @@ enum class TargetISA {
     AVX512_noFMA,
     HOST,
     NVPTX,
+    AMDGPU,
     COUNT
 };
 
@@ -272,6 +297,9 @@ public:
     /// Return a pointer to the TargetMachine for NVPTX.  Create the TargetMachine
     /// if it has not yet been created.
     llvm::TargetMachine* nvptx_target_machine();
+
+    /// Return a pointer to the TargetMachine for a specific GPU descriptor.
+    llvm::TargetMachine* target_machine_for(const GPUEmitDesc& desc);
 
     enum class Linkage {
         External,  // Externally visible
@@ -1030,6 +1058,10 @@ public:
     /// Generate PTX for the current Module and return it as a string
     bool ptx_compile_group(llvm::Module* lib_module, const std::string& name,
                            std::string& out);
+
+    /// Generate a GPU artifact (PTX, LLVM bitcode, or LLVM IR) from the given module
+    bool emit_gpu_artifact(const GPUEmitDesc& desc, llvm::Module* module,
+                           std::vector<uint8_t>& out);
 
     /// Convert all functions in module's bitcode to a string.
     std::string bitcode_string(llvm::Module* module);
