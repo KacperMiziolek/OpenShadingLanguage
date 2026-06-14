@@ -67,19 +67,7 @@ namespace Strutil = OIIO::Strutil;
 OSL_NAMESPACE_BEGIN
 
 /// Descriptor to specify what backend to use
-enum class GPUBackendKind {
-    None,
-    NVPTX,
-    AMDGPU
-};
 
-enum class GPUArtifactKind {
-    None,
-    PTX,
-    LLVMBitcode,
-    LLVMIR,
-    HSACO
-};
 
 struct GPUTargetDesc {
     GPUBackendKind backend = GPUBackendKind::None;

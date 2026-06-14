@@ -1857,6 +1857,128 @@ LLVM_Util::nvptx_target_machine()
 }
 
 
+llvm::TargetMachine*
+LLVM_Util::target_machine_for(const GPUEmitDesc& desc)
+{
+    if (desc.backend == GPUBackendKind::NVPTX) {
+        return nvptx_target_machine();
+    }
+
+    if (desc.backend == GPUBackendKind::AMDGPU) {
+        llvm::Triple ModuleTriple(desc.triple);
+        llvm::TargetOptions options;
+        options.AllowFPOpFusion = llvm::FPOpFusion::Standard;
+#if OSL_LLVM_VERSION < 220
+        options.UnsafeFPMath = 1;
+#endif
+        options.NoInfsFPMath                           = 1;
+        options.NoNaNsFPMath                           = 1;
+        options.HonorSignDependentRoundingFPMathOption = 0;
+        options.FloatABIType          = llvm::FloatABI::Default;
+        options.AllowFPOpFusion       = llvm::FPOpFusion::Fast;
+        options.NoZerosInBSS          = 0;
+        options.GuaranteedTailCallOpt = 0;
+        options.UseInitArray          = 0;
+
+        std::string error;
+#if OSL_LLVM_VERSION >= 220
+        const llvm::Target* llvm_target
+            = llvm::TargetRegistry::lookupTarget(ModuleTriple, error);
+#else
+        const llvm::Target* llvm_target
+            = llvm::TargetRegistry::lookupTarget(ModuleTriple.str(), error);
+#endif
+        OSL_ASSERT(llvm_target
+                   && "AMDGPU compile error: LLVM Target is not initialized");
+
+        llvm::Reloc::Model reloc_model = desc.rdc ? llvm::Reloc::PIC_ : llvm::Reloc::Static;
+
+        llvm::TargetMachine* tm = llvm_target->createTargetMachine(
+#if OSL_LLVM_VERSION >= 210
+            llvm::Triple(ModuleTriple.str()),
+#else
+            ModuleTriple.str(),
+#endif
+            desc.cpu,       // target GPU architecture e.g. gfx1100
+            desc.features,  // e.g. features list or empty
+            options,
+            reloc_model,
+            llvm::CodeModel::Small,
+#if OSL_LLVM_VERSION >= 180
+            llvm::CodeGenOptLevel::Default
+#else
+            llvm::CodeGenOpt::Default
+#endif
+        );
+        OSL_ASSERT(tm && "Unable to create TargetMachine for AMDGPU");
+        return tm;
+    }
+    return nullptr;
+}
+
+
+bool
+LLVM_Util::emit_gpu_artifact(const GPUEmitDesc& desc, llvm::Module* module,
+                             std::vector<uint8_t>& out)
+{
+    if (desc.backend == GPUBackendKind::NVPTX) {
+#ifdef OSL_USE_OPTIX
+        llvm::TargetMachine* target_machine = target_machine_for(desc);
+        if (!target_machine)
+            return false;
+        llvm::legacy::PassManager mpm;
+        llvm::SmallString<4096> assembly;
+        llvm::raw_svector_ostream assembly_stream(assembly);
+
+#    if OSL_LLVM_VERSION >= 180
+        target_machine->addPassesToEmitFile(mpm, assembly_stream,
+                                            nullptr,
+                                            llvm::CodeGenFileType::AssemblyFile);
+#    else
+        target_machine->addPassesToEmitFile(mpm, assembly_stream,
+                                            nullptr,
+                                            llvm::CGFT_AssemblyFile);
+#    endif
+
+        mpm.run(*module);
+
+        // Filter out non-deterministic callseq comments for OptiX JIT cache stability
+        std::istringstream raw_ptx(assembly_stream.str().str());
+        std::stringstream ptx_stream;
+        std::string line;
+        while (std::getline(raw_ptx, line)) {
+            ptx_stream << line.substr(0, line.find("// callseq")) << std::endl;
+        }
+        std::string ptx_str = ptx_stream.str();
+        out.assign(ptx_str.begin(), ptx_str.end());
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    if (desc.backend == GPUBackendKind::AMDGPU) {
+        if (desc.artifact == GPUArtifactKind::LLVMBitcode) {
+            llvm::raw_svector_ostream os(reinterpret_cast<llvm::SmallVectorImpl<char>&>(out));
+#if OSL_LLVM_VERSION >= 70
+            llvm::WriteBitcodeToFile(*module, os);
+#else
+            llvm::WriteBitcodeToFile(module, os);
+#endif
+            return true;
+        }
+        if (desc.artifact == GPUArtifactKind::LLVMIR) {
+            std::string ir_str;
+            llvm::raw_string_ostream os(ir_str);
+            module->print(os, nullptr);
+            out.assign(ir_str.begin(), ir_str.end());
+            return true;
+        }
+    }
+    return false;
+}
+
+
 
 void*
 LLVM_Util::getPointerToFunction(llvm::Function* func)
