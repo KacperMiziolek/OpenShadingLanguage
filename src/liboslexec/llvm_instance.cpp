@@ -24,6 +24,7 @@
 #if OSL_USE_OPTIX
 #    include <llvm/Linker/Linker.h>
 #endif
+#include <llvm/Transforms/Utils/Cloning.h>
 
 // Create external declarations for all built-in funcs we may call from LLVM
 #define DECL(name, signature) extern "C" void name();
