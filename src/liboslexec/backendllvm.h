@@ -531,6 +531,12 @@ public:
     /// Return if the current backend is AMDGPU.
     bool is_amdgpu_backend() { return shadingsys().m_gpu_target.backend == GPUBackendKind::AMDGPU; }
 
+    /// Return if no GPU backend is active (CPU / host bitcode path).
+    bool is_no_backend() { return shadingsys().m_gpu_target.backend == GPUBackendKind::None; }
+
+    /// Compatibility alias during use_optix() migration.
+    bool use_optix() { return is_nvptx_backend(); }
+
     bool use_optix_cache() { return shadingsys().use_optix_cache(); } // can be removed?
 
     /// Return if we should compile against free function versions of Renderer Service.

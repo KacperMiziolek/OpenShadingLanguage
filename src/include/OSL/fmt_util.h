@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <OSL/hashes.h>
 #include <OSL/rs_free_function.h>
 
 // OSL library functions as well as Renderer Service free functions
@@ -64,6 +65,27 @@ static_assert(alignof(PackedArgs<int, char, int>) == 1,
 
 }  // namespace pvt
 
+namespace pvt {
+// ponytail: HIP device bitcode TUs may compile host-side template instantiations
+// where ustringhash(const char*) is unavailable; use precomputed hash instead.
+OSL_FORCEINLINE OSL::ustringhash
+fmt_spec_hash(const OSL::ustringhash& fmt_specification)
+{
+    return fmt_specification;
+}
+
+template<typename SpecifierT>
+OSL_FORCEINLINE OSL::ustringhash
+fmt_spec_hash(const SpecifierT& fmt_specification)
+{
+#if defined(OSL_COMPILING_TO_BITCODE)
+    return OSL::ustringhash(OSL::strhash(fmt_specification));
+#else
+    return OSL::ustringhash { fmt_specification };
+#endif
+}
+}  // namespace pvt
+
 
 
 template<typename FilenameT, typename SpecifierT, typename... ArgListT>
@@ -78,8 +100,8 @@ filefmt(OpaqueExecContextPtr oec, const FilenameT& filename_hash,
         pvt::TypeEncoder<ArgListT>::Encode(args)...
     };
 
-    rs_filefmt(oec, OSL::ustringhash { filename_hash },
-               OSL::ustringhash { fmt_specification }, count,
+    rs_filefmt(oec, pvt::fmt_spec_hash(filename_hash),
+               pvt::fmt_spec_hash(fmt_specification), count,
                (count == 0) ? nullptr : argTypes,
                static_cast<uint32_t>((count == 0) ? 0 : sizeof(argValues)),
                (count == 0) ? nullptr : reinterpret_cast<uint8_t*>(&argValues));
@@ -97,7 +119,7 @@ printfmt(OpaqueExecContextPtr oec, const SpecifierT& fmt_specification,
         pvt::TypeEncoder<ArgListT>::Encode(args)...
     };
 
-    rs_printfmt(oec, OSL::ustringhash { fmt_specification }, count,
+    rs_printfmt(oec, pvt::fmt_spec_hash(fmt_specification), count,
                 (count == 0) ? nullptr : argTypes,
                 static_cast<uint32_t>((count == 0) ? 0 : sizeof(argValues)),
                 (count == 0) ? nullptr
@@ -116,7 +138,7 @@ errorfmt(OpaqueExecContextPtr oec, const SpecifierT& fmt_specification,
         pvt::TypeEncoder<ArgListT>::Encode(args)...
     };
 
-    rs_errorfmt(oec, OSL::ustringhash { fmt_specification }, count,
+    rs_errorfmt(oec, pvt::fmt_spec_hash(fmt_specification), count,
                 (count == 0) ? nullptr : argTypes,
                 static_cast<uint32_t>((count == 0) ? 0 : sizeof(argValues)),
                 (count == 0) ? nullptr
@@ -135,7 +157,7 @@ warningfmt(OpaqueExecContextPtr oec, const SpecifierT& fmt_specification,
         pvt::TypeEncoder<ArgListT>::Encode(args)...
     };
 
-    rs_warningfmt(oec, OSL::ustringhash { fmt_specification }, count,
+    rs_warningfmt(oec, pvt::fmt_spec_hash(fmt_specification), count,
                   (count == 0) ? nullptr : argTypes,
                   static_cast<uint32_t>((count == 0) ? 0 : sizeof(argValues)),
                   (count == 0) ? nullptr

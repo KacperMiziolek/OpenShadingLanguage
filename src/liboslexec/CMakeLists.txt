@@ -246,6 +246,32 @@ if (USE_LLVM_BITCODE)
             DESTINATION ${OSL_PTX_INSTALL_DIR})
 
     endif ()
+
+    if (OSL_ENABLE_AMDGPU)
+        set (liboslexec_amd_shadeops_srcs
+            ${CMAKE_SOURCE_DIR}/src/liboslexec/llvm_ops.cpp
+            ${CMAKE_SOURCE_DIR}/src/liboslexec/opnoise.cpp
+            ${CMAKE_SOURCE_DIR}/src/liboslexec/opspline.cpp
+            ${CMAKE_SOURCE_DIR}/src/liboslexec/opcolor.cpp
+            ${CMAKE_SOURCE_DIR}/src/liboslexec/opmatrix.cpp
+            ${CMAKE_SOURCE_DIR}/src/liboslexec/optexture.cpp
+            ${CMAKE_SOURCE_DIR}/src/liboslexec/pointcloud.cpp
+            ${CMAKE_SOURCE_DIR}/src/liboslexec/opclosure.cpp
+            ${CMAKE_SOURCE_DIR}/src/liboslnoise/gabornoise.cpp
+            ${CMAKE_SOURCE_DIR}/src/liboslnoise/simplexnoise.cpp
+        )
+
+        HIP_SHADEOPS_COMPILE ( "shadeops_amdgpu"
+            shadeops_amdgpu_bc
+            "${liboslexec_amd_shadeops_srcs}"
+            ""
+        )
+
+        set (shadeops_bc_amdgpu_cpp "${CMAKE_CURRENT_BINARY_DIR}/shadeops_amdgpu.bc.cpp")
+        MAKE_EMBEDDED_CPP ( "shadeops_amdgpu_llvm_compiled_ops"
+            ${shadeops_bc_amdgpu_cpp} ${shadeops_amdgpu_bc} )
+        list (APPEND lib_src ${shadeops_bc_amdgpu_cpp})
+    endif ()
 else ()
     # With MSVC/Mingw, we don't compile llvm_ops.cpp to LLVM bitcode, due
     # to clang being unable to compile MSVC C++ header files at this time.

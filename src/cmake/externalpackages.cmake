@@ -218,3 +218,45 @@ macro (find_or_download_robin_map)
 endmacro()
 
 find_or_download_robin_map ()
+
+
+# AMDGPU / HIP setup
+if (OSL_ENABLE_AMDGPU)
+    string (FIND "${LLVM_TARGETS}" "AMDGPU" amdgpu_index)
+    if (NOT ${amdgpu_index} GREATER -1)
+        message (FATAL_ERROR "AMDGPU target is not available in the provided LLVM build")
+    endif ()
+    if (NOT LLVM_BC_GENERATOR)
+        find_program (LLVM_BC_GENERATOR NAMES clang++
+                      PATHS "${LLVM_DIRECTORY}/bin" NO_DEFAULT_PATH)
+    endif ()
+    if (NOT LLVM_BC_GENERATOR)
+        find_program (LLVM_BC_GENERATOR NAMES clang++ llvm-g++)
+    endif ()
+    if (NOT LLVM_BC_GENERATOR)
+        message (FATAL_ERROR "You must have a valid llvm bitcode generator (clang++) somewhere.")
+    endif ()
+    find_program (LLVM_LINK_TOOL NAMES llvm-link
+                  PATHS "${LLVM_DIRECTORY}/bin" "${LLVM_DIRECTORY}/tools/llvm"
+                  NO_CMAKE_PATH NO_DEFAULT_PATH NO_CMAKE_SYSTEM_PATH
+                  NO_SYSTEM_ENVIRONMENT_PATH NO_CMAKE_ENVIRONMENT_PATH)
+    find_program (LLVM_OPT_TOOL NAMES opt
+                  PATHS "${LLVM_DIRECTORY}/bin" "${LLVM_DIRECTORY}/tools/llvm"
+                  NO_CMAKE_PATH NO_DEFAULT_PATH NO_CMAKE_SYSTEM_PATH
+                  NO_SYSTEM_ENVIRONMENT_PATH NO_CMAKE_ENVIRONMENT_PATH)
+    if (NOT LLVM_LINK_TOOL OR NOT LLVM_OPT_TOOL)
+        message (FATAL_ERROR "AMDGPU support requires llvm-link and opt in LLVM_DIRECTORY/bin")
+    endif ()
+    if (NOT ROCM_PATH)
+        if (NOT "$ENV{ROCM_PATH}" STREQUAL "")
+            set (ROCM_PATH $ENV{ROCM_PATH})
+        elseif (EXISTS "/opt/rocm")
+            set (ROCM_PATH "/opt/rocm")
+        endif ()
+    endif ()
+    if (ROCM_PATH)
+        set (HIP_LIB_FLAGS "--rocm-path=${ROCM_PATH}")
+        message (STATUS "ROCM_PATH = ${ROCM_PATH}")
+    endif ()
+    message (STATUS "AMDGPU enabled, arch=${OSL_HIP_TARGET_ARCH}")
+endif ()

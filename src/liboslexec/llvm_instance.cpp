@@ -21,8 +21,12 @@
 #include "oslexec_pvt.h"
 #include "backendllvm.h"
 
-#if OSL_USE_OPTIX
+#if OSL_USE_OPTIX || OSL_ENABLE_AMDGPU
+#    include <llvm/Bitcode/BitcodeWriter.h>
+#    include <llvm/IR/Module.h>
 #    include <llvm/Linker/Linker.h>
+#    include <llvm/Support/raw_ostream.h>
+#    include <llvm/Transforms/Utils/Cloning.h>
 #endif
 
 // Create external declarations for all built-in funcs we may call from LLVM
@@ -124,6 +128,11 @@ extern unsigned char osl_llvm_compiled_rs_dependent_ops_block[];
 #ifdef OSL_LLVM_CUDA_BITCODE
 extern int shadeops_cuda_llvm_compiled_ops_size;
 extern unsigned char shadeops_cuda_llvm_compiled_ops_block[];
+#endif
+
+#if OSL_ENABLE_AMDGPU
+extern int shadeops_amdgpu_llvm_compiled_ops_size;
+extern unsigned char shadeops_amdgpu_llvm_compiled_ops_block[];
 #endif
 
 using namespace OSL::pvt;
@@ -2244,11 +2253,26 @@ BackendLLVM::run()
                 OSL_ASSERT(0 && "Must generate LLVM CUDA bitcode for OptiX");
 #    endif
             } else if (target.backend == GPUBackendKind::AMDGPU) {
-                // Link AMDGPU device shadeops
-                // (The actual block shadeops_amdgpu_llvm_compiled_ops_block is added in the CMake phase)
-                // For now, we stub this link path to allow the module configuration to proceed:
-#    ifdef OSL_ENABLE_AMDGPU
-                // When enabled, we'll link in the device shadeops here
+#    if OSL_ENABLE_AMDGPU
+                llvm::Module* shadeops_module = ll.module_from_bitcode(
+                    (char*)shadeops_amdgpu_llvm_compiled_ops_block,
+                    shadeops_amdgpu_llvm_compiled_ops_size, "llvm_ops", &err);
+
+                if (err.length())
+                    shadingcontext()->errorfmt(
+                        "llvm::parseBitcodeFile returned '{}' for amdgpu llvm_ops\n",
+                        err);
+
+                shadeops_module->setDataLayout(target.data_layout);
+#        if OSL_LLVM_VERSION < 210
+                shadeops_module->setTargetTriple(target.triple.c_str());
+#        else
+                shadeops_module->setTargetTriple(llvm::Triple(target.triple));
+#        endif
+
+                std::unique_ptr<llvm::Module> shadeops_ptr(shadeops_module);
+                llvm::Linker::linkModules(*ll.module(), std::move(shadeops_ptr),
+                                          llvm::Linker::Flags::None);
 #    endif
             }
 
@@ -2565,13 +2589,15 @@ BackendLLVM::run()
 #endif
 
             // Emit the bitcode to a raw memory buffer
-            std::vector<uint8_t> bitcode_payload;
-            llvm::raw_svector_ostream os(reinterpret_cast<llvm::SmallVectorImpl<char>&>(bitcode_payload));
+            llvm::SmallVector<char, 0> bitcode_buf;
+            llvm::raw_svector_ostream os(bitcode_buf);
 #if OSL_LLVM_VERSION >= 70
             llvm::WriteBitcodeToFile(*arch_module, os);
 #else
             llvm::WriteBitcodeToFile(arch_module.get(), os);
 #endif
+            std::vector<uint8_t> bitcode_payload(bitcode_buf.begin(),
+                                                 bitcode_buf.end());
 
             // Assemble the final artifact
             CompiledGPUArtifact art;

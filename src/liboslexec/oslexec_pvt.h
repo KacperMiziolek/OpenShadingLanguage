@@ -711,7 +711,7 @@ public:
     ///
     TextureSystem* texturesys() const { return m_texturesys; }
 
-    GPUTargetDesc target_gpu() { return m_gpu_target; }
+    GPUTargetDesc target_gpu() const { return m_gpu_target; }
     bool use_optix() const { return m_use_optix; } // to be deleted
     bool use_optix_cache() const { return m_use_optix_cache; }
     bool debug_nan() const { return m_debugnan; }
