@@ -71,6 +71,10 @@ static bool vary_Pdxdy    = false;
 static bool vary_udxdy    = false;
 static bool vary_vdxdy    = false;
 static bool saveptx       = false;
+static bool use_amdgpu       = false;
+static bool save_amdgpu      = false;
+static std::string amdgpu_arch   = "gfx1201";
+static std::string amdgpu_format = "bitcode";
 static bool warmup        = false;
 static bool profile       = false;
 static bool O0 = false, O1 = false, O2 = false;
@@ -740,6 +744,14 @@ getargs(int argc, const char* argv[])
       .help("Print profile information");
     ap.arg("--saveptx", &saveptx)
       .help("Save the generated PTX (OptiX mode only)");
+    ap.arg("--amdgpu", &use_amdgpu)
+      .help("Use AMDGPU backend for emit-only artifact generation");
+    ap.arg("--save-amdgpu", &save_amdgpu)
+      .help("Save the generated AMDGPU artifacts to disk");
+    ap.arg("--amdgpu-arch %s:ARCH", &amdgpu_arch)
+      .help("Set AMDGPU target architecture (default: gfx1201)");
+    ap.arg("--amdgpu-format %s:FMT", &amdgpu_format)
+      .help("Set AMDGPU artifact format: bitcode or llvmir (default: bitcode)");
     ap.arg("--warmup", &warmup)
       .help("Perform a warmup launch");
     ap.arg("--res %d:XRES %d:YRES", &xres, &yres)
@@ -1946,6 +1958,12 @@ test_shade(int argc, const char* argv[])
                   3.5);
     }
 
+    // Validate mutually exclusive GPU modes
+    if (use_optix && use_amdgpu) {
+        std::cerr << "ERROR: --optix and --amdgpu are mutually exclusive.\n";
+        return EXIT_FAILURE;
+    }
+
     std::unique_ptr<SimpleRenderer> rend;
 #if OSL_USE_OPTIX
     if (use_optix)
@@ -1953,6 +1971,12 @@ test_shade(int argc, const char* argv[])
     else
 #endif
         rend.reset(new SimpleRenderer);
+
+    // Configure AMDGPU mode on the renderer before ShadingSystem creation
+    if (use_amdgpu) {
+        rend->set_amdgpu_mode(true);
+        output_placement = false;
+    }
 
     // Other renderer and global options
     if (debug1 || verbose)
@@ -1984,6 +2008,12 @@ test_shade(int argc, const char* argv[])
     // make its own TS), and an error handler.
     shadingsys = new ShadingSystem(rend.get(), texturesys, &rend->errhandler());
     rend->init_shadingsys(shadingsys);
+
+    // Push AMDGPU CLI options into the shading system
+    if (use_amdgpu) {
+        shadingsys->attribute("gpu_archs", amdgpu_arch);
+        shadingsys->attribute("gpu_artifact_format", amdgpu_format);
+    }
 
     // Register the layout of all closures known to this renderer
     // Any closure used by the shader which is not registered, or
@@ -2324,6 +2354,51 @@ test_shade(int argc, const char* argv[])
         if (texturesys)
             std::cout << texturesys->getstats(5) << "\n";
         std::cout << ustring::getstats() << "\n";
+    }
+
+    // Save AMDGPU artifacts if requested
+    if (use_amdgpu && save_amdgpu) {
+        int num_artifacts = 0;
+        shadingsys->getattribute(shadergroup.get(), "gpu_num_artifacts",
+                                 TypeDesc::INT, &num_artifacts);
+        if (num_artifacts == 0) {
+            std::cerr << "WARNING: No AMDGPU artifacts were generated.\n";
+        }
+        for (int i = 0; i < num_artifacts; ++i) {
+            int size = 0, kind = 0;
+            ustring arch_str, triple_str;
+            std::string key_size = fmtformat("gpu_artifact:{}:size", i);
+            std::string key_kind = fmtformat("gpu_artifact:{}:kind", i);
+            std::string key_arch = fmtformat("gpu_artifact:{}:arch", i);
+
+            shadingsys->getattribute(shadergroup.get(), key_size,
+                                     TypeDesc::INT, &size);
+            shadingsys->getattribute(shadergroup.get(), key_kind,
+                                     TypeDesc::INT, &kind);
+            shadingsys->getattribute(shadergroup.get(), key_arch,
+                                     TypeDesc::STRING, &arch_str);
+
+            if (size > 0) {
+                std::vector<uint8_t> payload(size);
+                std::string key_data = fmtformat("gpu_artifact:{}:data", i);
+                shadingsys->getattribute(
+                    shadergroup.get(), key_data,
+                    TypeDesc(TypeDesc::UINT8, size), payload.data());
+
+                // Determine file extension from artifact kind
+                const char* ext = (kind == 2) ? ".bc"
+                                : (kind == 3) ? ".ll"
+                                               : ".bin";
+                std::string gname = groupname.empty() ? "group" : groupname;
+                std::string filename = fmtformat("{}_{}.amdgpu{}",
+                                                  gname, arch_str, ext);
+
+                std::ofstream out(filename, std::ios::binary);
+                out.write(reinterpret_cast<const char*>(payload.data()), size);
+                std::cout << "Saved AMDGPU artifact: " << filename
+                          << " (" << size << " bytes)\n";
+            }
+        }
     }
 
     // TODO: Include batched support

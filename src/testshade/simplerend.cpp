@@ -277,6 +277,10 @@ SimpleRenderer::supports(string_view feature) const
         return true;
     else if (m_use_rs_bitcode && feature == "build_interpolated_getter")
         return true;
+    if (m_amdgpu_mode) {
+        if (feature == "AMDGPU" || feature == "GPU")
+            return true;
+    }
     return false;
 }
 

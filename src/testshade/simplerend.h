@@ -156,6 +156,7 @@ public:
     virtual void finalize_pixel_buffer() {}
 
     void use_rs_bitcode(bool enabled) { m_use_rs_bitcode = enabled; }
+    void set_amdgpu_mode(bool enabled) { m_amdgpu_mode = enabled; }
 
     static void register_JIT_Global_Variables();
 
@@ -202,6 +203,7 @@ protected:
     std::vector<std::shared_ptr<OIIO::ImageBuf>> m_outputbufs;
     std::unique_ptr<OIIO::ErrorHandler> m_errhandler { new OIIO::ErrorHandler };
     bool m_use_rs_bitcode = false;
+    bool m_amdgpu_mode = false;
 
     // Named transforms
     typedef std::map<ustringhash, std::shared_ptr<Transformation>> TransformMap;

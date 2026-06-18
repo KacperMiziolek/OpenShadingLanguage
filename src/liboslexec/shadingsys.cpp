@@ -1726,6 +1726,21 @@ ShadingSystemImpl::attribute(string_view name, TypeDesc type, const void* val)
             errorfmt("Unknown color space \"{}\"", c);
         return true;
     }
+    if (name == "gpu_archs" && type == TypeDesc::STRING) {
+        m_gpu_target.archs.clear();
+        m_gpu_target.archs.emplace_back(*(const char**)val);
+        return true;
+    }
+    if (name == "gpu_artifact_format" && type == TypeDesc::STRING) {
+        std::string fmt(*(const char**)val);
+        if (fmt == "bitcode")
+            m_gpu_target.artifact = GPUArtifactKind::LLVMBitcode;
+        else if (fmt == "llvmir")
+            m_gpu_target.artifact = GPUArtifactKind::LLVMIR;
+        else
+            errorfmt("Unknown gpu_artifact_format \"{}\"", fmt);
+        return true;
+    }
     if (name == "raytypes" && type.basetype == TypeDesc::STRING) {
         OSL_ASSERT(type.numelements() <= 32
                    && "ShaderGlobals.raytype is an int, max of 32 raytypes");
