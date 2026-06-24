@@ -37,7 +37,6 @@ function (MAKE_HIP_BITCODE src suffix generated_bc extra_clang_args)
             -Wno-deprecated-register -Wno-format-security
             -emit-llvm -c ${extra_clang_args}
             ${src} -o ${bc_hip}
-        MAIN_DEPENDENCY ${src}
         DEPENDS ${src} ${exec_headers} ${PROJECT_PUBLIC_HEADERS}
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 endfunction ()
